@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="عارض الأشعة">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#0b0f14">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="apple-touch-icon.png">
+<style>
+  :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);height:100%}
+  @supports (height:100dvh){:root{height:100dvh}}
+  html{background:#0b0f14}
+</style>
+</head>
+<body>
+<title>Lightbox Ray Viewer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a reading-room lightbox. Series rail beside the film on wide screens, a chip strip above it on phones. Single dark look by choice. */
+  :root{
+    --ground:#0b0f14; --panel:#121820; --raised:#1a222c; --line:#26303c;
+    --ink:#e4e9ef; --dim:#8794a3; --accent:#5fb3c8; --film:#ffcf6b;
+    --ui:"IBM Plex Sans Arabic",-apple-system,"Segoe UI",Tahoma,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{height:100%}
+  body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.5 var(--ui);display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;gap:8px;align-items:center;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:600;margin:0 0 0 auto;letter-spacing:.01em}
+  header h1 span{color:var(--dim);font-weight:400}
+  button,.btn{background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap;touch-action:manipulation}
+  button:hover,.btn:hover{border-color:var(--accent)}
+  button:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+  button.on{background:color-mix(in srgb,var(--accent) 22%,var(--raised));border-color:var(--accent)}
+  .primary{background:var(--accent);border-color:var(--accent);color:var(--ground);font-weight:600}
+  .primary:hover{border-color:var(--ink)}
+  input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  main{flex:1;display:flex;min-height:0}
+  #list{width:280px;border-left:1px solid var(--line);overflow:auto;background:var(--panel);padding-block:4px}
+  .study{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+  .study h3{margin:0 0 2px;font-size:12px;color:var(--dim);font-weight:600;letter-spacing:.02em}
+  .series{text-align:right;display:flex;justify-content:space-between;gap:8px}
+  .series small{color:var(--dim);font-family:var(--mono);font-size:11px}
+  #view{flex:1;display:flex;flex-direction:column;min-width:0}
+  #tools{display:flex;gap:6px;padding-block:8px;padding-inline:12px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;align-items:center}
+  #tools::-webkit-scrollbar{display:none}
+  .sep{flex:none;width:1px;height:22px;background:var(--line);margin-inline:2px}
+  #stage{flex:1;position:relative;overflow:hidden;background:#000;touch-action:none;user-select:none;-webkit-user-select:none}
+  canvas{position:absolute}
+  .ov{position:absolute;font:11px/1.4 var(--mono);color:var(--film);text-shadow:0 0 3px #000;pointer-events:none;direction:ltr;max-width:60%}
+  #ovTL{top:8px;left:10px}#ovBL{bottom:8px;left:10px}#ovTR{top:8px;right:10px;text-align:right}
+  #sample{position:absolute;bottom:8px;right:10px;font-size:12px;color:var(--ground);background:var(--film);border-radius:4px;padding:1px 8px}
+  #bar{display:flex;gap:12px;align-items:center;padding-block:8px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-top:1px solid var(--line)}
+  #pos{font:12px var(--mono);direction:ltr;min-width:64px;font-variant-numeric:tabular-nums}
+  #slider{flex:1;min-width:0;direction:ltr;accent-color:var(--accent)}
+  .hint{font-size:12px;color:var(--dim)}
+  #status{font-size:12px;color:var(--dim)}
+  #prog{height:2px;background:var(--accent);width:0;transition:width .15s}
+  #drop{position:absolute;inset:12px;border:2px dashed var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;background:color-mix(in srgb,var(--ground) 70%,transparent)}
+  .wide-only{display:inline-flex}
+  @media (max-width:760px){
+    main{flex-direction:column}
+    #list{width:auto;border-left:0;border-bottom:1px solid var(--line);display:flex;overflow-x:auto;overflow-y:hidden;padding:8px 12px;gap:8px;flex:none;scrollbar-width:none}
+    #list::-webkit-scrollbar{display:none}
+    .study{flex-direction:row;align-items:center;padding:0;border:0;gap:6px}
+    .study h3{white-space:nowrap;margin:0;padding-inline-start:4px}
+    .series{flex:none}
+    #barHint,.wide-only{display:none}
+    header h1 span{display:none}
+  }
+  @media (hover:none){.wide-only{display:none}}
+</style>
+
+<header>
+  <h1>عارض الأشعة <span>· CT · سونار · رنين</span></h1>
+  <label class="btn primary" for="anyInput">افتح ملف الأشعة</label>
+  <input id="anyInput" type="file" multiple>
+  <label class="btn wide-only" for="dirInput">افتح مجلد</label>
+  <input id="dirInput" type="file" webkitdirectory multiple>
+</header>
+<div id="prog"></div>
+<main>
+  <nav id="list" aria-label="الفحوصات"></nav>
+  <section id="view">
+    <div id="tools" role="toolbar">
+      <button data-tool="scroll" id="toolScroll">تقليب</button>
+      <button data-tool="wl">تباين</button>
+      <button data-tool="pan">تحريك</button>
+      <span class="sep"></span>
+      <button data-preset="40,400">أنسجة</button>
+      <button data-preset="-600,1500">رئة</button>
+      <button data-preset="400,1800">عظم</button>
+      <button data-preset="40,80">دماغ</button>
+      <button id="reset">الأصلي</button>
+      <span class="sep"></span>
+      <button id="zin" aria-label="تكبير">+</button>
+      <button id="zout" aria-label="تصغير">−</button>
+      <button id="fit">ملء</button>
+      <button id="inv">عكس</button>
+    </div>
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div class="ov" id="ovTL"></div><div class="ov" id="ovTR"></div><div class="ov" id="ovBL"></div>
+      <div id="sample">مثال تجريبي</div>
+      <div id="drop" hidden>أفلت الملف أو المجلد هنا</div>
+    </div>
+    <div id="bar">
+      <span id="pos">– / –</span>
+      <input id="slider" type="range" min="0" max="0" value="0" aria-label="رقم الصورة">
+      <span class="hint" id="barHint">عجلة الماوس أو ↑↓ للتقليب</span>
+      <span id="status"></span>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+document.documentElement.lang="ar"; document.documentElement.dir="rtl";
+// ---------- DICOM parsing (uncompressed transfer syntaxes) ----------
+const LONG_VR = new Set(["OB","OD","OF","OL","OV","OW","SQ","UC","UN","UR","UT","SV","UV"]);
+const US_TAGS = {0x00280002:"spp",0x00280006:"planar",0x00280010:"rows",0x00280011:"cols",0x00280100:"bits",0x00280101:"stored",0x00280103:"signed"};
+const STR_TAGS = {0x00080060:"modality",0x00080020:"studyDate",0x00081030:"studyDesc",0x0008103E:"seriesDesc",
+  0x0020000D:"studyUID",0x0020000E:"seriesUID",0x00200011:"seriesNum",0x00200013:"instNum",0x00200032:"pos",
+  0x00280004:"photo",0x00280008:"frames",0x00281050:"wc",0x00281051:"ww",0x00281052:"intercept",0x00281053:"slope"};
+
+function str(dv,off,len){let s="";for(let i=0;i<len;i++){const c=dv.getUint8(off+i);if(c)s+=String.fromCharCode(c)}return s.trim()}
+function readHeader(dv,off,le,explicit){
+  if(explicit){
+    const vr=String.fromCharCode(dv.getUint8(off+4),dv.getUint8(off+5));
+    if(LONG_VR.has(vr)) return {len:dv.getUint32(off+8,le),next:off+12};
+    return {len:dv.getUint16(off+6,le),next:off+8};
+  }
+  return {len:dv.getUint32(off+4,le),next:off+8};
+}
+// Skips a sequence/item body of undefined length; returns the offset after its delimiter.
+function skipUndefined(dv,off,le,explicit,endTag){
+  while(off+8<=dv.byteLength){
+    const g=dv.getUint16(off,le),tag=(g<<16|dv.getUint16(off+2,le))>>>0;
+    if(g===0xFFFE){
+      const len=dv.getUint32(off+4,le); off+=8;
+      if(tag===endTag) return off;
+      if(tag===0xFFFEE000) off = len===0xFFFFFFFF ? skipUndefined(dv,off,le,explicit,0xFFFEE00D) : off+len;
+      continue;
+    }
+    const r=readHeader(dv,off,le,explicit); off=r.next;
+    off = r.len===0xFFFFFFFF ? skipUndefined(dv,off,le,explicit,0xFFFEE0DD) : off+r.len;
+  }
+  throw new RangeError("truncated");
+}
+// Header fields + pixel offset; null when not DICOM; RangeError when the buffer is too short.
+function parseDicom(buf){
+  const dv=new DataView(buf);
+  if(buf.byteLength<132||str(dv,128,4)!=="DICM") return null;
+  const h={}; let off=132, le=true, explicit=true, ts="";
+  while(off+8<=dv.byteLength&&dv.getUint16(off,true)===0x0002){
+    const tag=(0x0002<<16|dv.getUint16(off+2,true))>>>0, r=readHeader(dv,off,true,true);
+    if(tag===0x00020010) ts=str(dv,r.next,r.len);
+    off=r.next+r.len;
+  }
+  if(ts==="1.2.840.10008.1.2") explicit=false;
+  else if(ts==="1.2.840.10008.1.2.2") le=false;
+  else if(ts&&ts!=="1.2.840.10008.1.2.1") h.compressed=ts;
+  h.le=le;
+  while(off+8<=dv.byteLength){
+    const g=dv.getUint16(off,le),tag=(g<<16|dv.getUint16(off+2,le))>>>0, r=readHeader(dv,off,le,explicit);
+    if(tag===0x7FE00010){h.pixelOffset=r.next;h.pixelLength=r.len;return h}
+    if(r.len===0xFFFFFFFF){off=skipUndefined(dv,r.next,le,explicit,0xFFFEE0DD);continue}
+    if(r.next+r.len>dv.byteLength) throw new RangeError("truncated");
+    if(US_TAGS[tag]) h[US_TAGS[tag]]=dv.getUint16(r.next,le);
+    else if(STR_TAGS[tag]) h[STR_TAGS[tag]]=str(dv,r.next,r.len);
+    off=r.next+r.len;
+  }
+  return h; // no pixel data (report, DICOMDIR...)
+}
+
+// ---------- Sources: plain files and entries inside .zip files ----------
+function fileSource(file){
+  return {name:file.name,size:file.size,read:(a,b)=>file.slice(a,b).arrayBuffer(),prefix:n=>file.slice(0,n).arrayBuffer()};
+}
+async function inflate(blob){return new Response(blob.stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()}
+async function inflatePrefix(blob,n){
+  const reader=blob.stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader(), parts=[]; let got=0;
+  while(got<n){const {done,value}=await reader.read();if(done)break;parts.push(value);got+=value.length}
+  reader.cancel().catch(()=>{});
+  const out=new Uint8Array(Math.min(got,n));let o=0;
+  for(const p of parts){const take=Math.min(p.length,out.length-o);out.set(p.subarray(0,take),o);o+=take;if(o>=out.length)break}
+  return out.buffer;
+}
+async function zipSources(file){
+  const u32=(dv,o)=>dv.getUint32(o,true), u16=(dv,o)=>dv.getUint16(o,true);
+  const tailLen=Math.min(file.size,65557+20), tailStart=file.size-tailLen;
+  const tail=new DataView(await file.slice(tailStart).arrayBuffer());
+  let e=-1; for(let i=tail.byteLength-22;i>=0;i--) if(u32(tail,i)===0x06054b50){e=i;break}
+  if(e<0) throw new Error("ليس ملف zip صالح");
+  let count=u16(tail,e+10), cdSize=u32(tail,e+12), cdOff=u32(tail,e+16);
+  if((count===0xFFFF||cdOff===0xFFFFFFFF)&&e>=20&&u32(tail,e-20)===0x07064b50){
+    const z64=Number(tail.getBigUint64(e-20+8,true)), d=new DataView(await file.slice(z64,z64+56).arrayBuffer());
+    count=Number(d.getBigUint64(32,true)); cdSize=Number(d.getBigUint64(40,true)); cdOff=Number(d.getBigUint64(48,true));
+  }
+  const cd=new DataView(await file.slice(cdOff,cdOff+cdSize).arrayBuffer()), out=[], dec=new TextDecoder();
+  for(let p=0,i=0;i<count&&p+46<=cd.byteLength;i++){
+    if(u32(cd,p)!==0x02014b50) break;
+    const flags=u16(cd,p+8), method=u16(cd,p+10), nLen=u16(cd,p+28), xLen=u16(cd,p+30), cLen=u16(cd,p+32);
+    let comp=u32(cd,p+20), size=u32(cd,p+24), local=u32(cd,p+42);
+    const name=dec.decode(new Uint8Array(cd.buffer,p+46,nLen));
+    for(let x=p+46+nLen;x+4<=p+46+nLen+xLen;){ // zip64 extra field
+      const id=u16(cd,x), len=u16(cd,x+2); let q=x+4;
+      if(id===1){
+        if(size===0xFFFFFFFF){size=Number(cd.getBigUint64(q,true));q+=8}
+        if(comp===0xFFFFFFFF){comp=Number(cd.getBigUint64(q,true));q+=8}
+        if(local===0xFFFFFFFF){local=Number(cd.getBigUint64(q,true))}
+      }
+      x+=4+len;
+    }
+    p+=46+nLen+xLen+cLen;
+    const base=name.split("/").pop();
+    if(name.endsWith("/")||name.startsWith("__MACOSX/")||base.startsWith("._")||(flags&1)||(method!==0&&method!==8)) continue;
+    let dataBlob=null;
+    const blob=async()=>{
+      if(!dataBlob){const lh=new DataView(await file.slice(local,local+30).arrayBuffer());
+        const start=local+30+u16(lh,26)+u16(lh,28); dataBlob=file.slice(start,start+comp)}
+      return dataBlob;
+    };
+    if(method===0) out.push({name:base,size,read:async(a,b)=>(await blob()).slice(a,b).arrayBuffer(),prefix:async n=>(await blob()).slice(0,n).arrayBuffer()});
+    else out.push({name:base,size,read:async(a,b)=>(await inflate(await blob())).slice(a,b),prefix:async n=>inflatePrefix(await blob(),n)});
+  }
+  return out;
+}
+
+// ---------- Index ----------
+let studies=new Map();
+const $=id=>document.getElementById(id), prog=$("prog"), statusEl=$("status");
+
+async function indexSource(src){
+  if(src.size<132) return;
+  let h;
+  try{ h=parseDicom(await src.prefix(Math.min(src.size,131072))); }
+  catch(e){ if(!(e instanceof RangeError)) return; try{ h=parseDicom(await src.read(0,src.size)); }catch{ return; } }
+  if(!h||h.pixelOffset==null||!h.rows||!h.cols) return;
+  if(h.compressed){skipped++;return}
+  const frames=Math.max(1,parseInt(h.frames)||1), st=h.studyUID||"?", se=h.seriesUID||src.name;
+  if(!studies.has(st)) studies.set(st,{date:h.studyDate||"",desc:h.studyDesc||"",series:new Map()});
+  const S=studies.get(st);
+  if(!S.series.has(se)) S.series.set(se,{num:parseInt(h.seriesNum)||0,desc:h.seriesDesc||"",modality:h.modality||"",items:[]});
+  const z=h.pos?parseFloat(h.pos.split("\\")[2]):NaN;
+  for(let f=0;f<frames;f++) S.series.get(se).items.push({src,h,frame:f,inst:parseInt(h.instNum)||0,z,name:src.name});
+}
+let skipped=0;
+async function loadFiles(files){
+  files=[...files]; if(!files.length) return;
+  statusEl.textContent="جاري فتح الملفات…";
+  const sources=[];
+  for(const f of files){
+    if(/\.zip$/i.test(f.name)&&typeof DecompressionStream==="undefined"){
+      statusEl.textContent="جهازك ما يدعم فتح ملفات zip. حدّث النظام (iOS 16.4 أو أحدث) أو افتح الصور بدون ضغط."; return;
+    }
+    if(/\.zip$/i.test(f.name)){
+      try{ sources.push(...await zipSources(f)); }catch(err){ statusEl.textContent=`تعذّر فتح ${f.name}: ${err.message}`; return; }
+    } else sources.push(fileSource(f));
+  }
+  studies=new Map(); cache.clear(); cacheBytes=0; current=null; skipped=0;
+  let done=0; const queue=sources.slice();
+  const worker=async()=>{while(queue.length){await indexSource(queue.shift());done++;
+    if(done%10===0){prog.style.width=(100*done/sources.length)+"%";statusEl.textContent=`جاري القراءة ${done} / ${sources.length}`}}};
+  await Promise.all(Array.from({length:6},worker));
+  prog.style.width="0";
+  let images=0;
+  for(const S of studies.values()) for(const s of S.series.values()){
+    s.items.sort((a,b)=>(a.inst-b.inst)||((a.z||0)-(b.z||0))||a.name.localeCompare(b.name)||(a.frame-b.frame));
+    images+=s.items.length;
+  }
+  statusEl.textContent = studies.size ? `${images} صورة` : (skipped ? "الصور مضغوطة بصيغة غير مدعومة في هذا العارض." : "ما لقيت صور أشعة في الملفات المختارة.");
+  if(studies.size){$("sample").hidden=true;buildList()}
+}
+
+function fmtDate(d){return d&&d.length===8?`${d.slice(6)}-${d.slice(4,6)}-${d.slice(0,4)}`:d}
+const MOD_AR={CT:"أشعة مقطعية",US:"سونار",MR:"رنين مغناطيسي",CR:"أشعة سينية",DX:"أشعة سينية",XA:"قسطرة",MG:"ماموجرام",NM:"طب نووي",PT:"PET"};
+function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function buildList(){
+  const list=$("list"); list.innerHTML=""; let first=null, n=0;
+  for(const S of [...studies.values()].sort((a,b)=>a.date.localeCompare(b.date))){
+    const div=document.createElement("div"); div.className="study";
+    const mods=[...new Set([...S.series.values()].map(s=>s.modality))];
+    div.innerHTML=`<h3>${++n}. ${mods.map(m=>MOD_AR[m]||m).join(" / ")} · ${fmtDate(S.date)}${S.desc?" · "+esc(S.desc):""}</h3>`;
+    for(const s of [...S.series.values()].sort((a,b)=>a.num-b.num)){
+      const b=document.createElement("button"); b.className="series";
+      b.innerHTML=`<span>${esc(s.desc)||"مجموعة "+s.num}</span><small>${s.items.length}</small>`;
+      b.onclick=()=>{document.querySelectorAll(".series").forEach(x=>x.classList.remove("on"));b.classList.add("on");b.scrollIntoView({block:"nearest",inline:"nearest"});openSeries(s)};
+      div.appendChild(b);
+      if(!first||s.items.length>first.s.items.length) first={s,b};
+    }
+    list.appendChild(div);
+  }
+  first.b.click();
+}
+
+// ---------- Pixels ----------
+const cache=new Map(), CACHE_BYTES=(navigator.deviceMemory||4)>=4&&!matchMedia("(hover:none)").matches?400e6:120e6;
+let cacheBytes=0;
+async function getPixels(it){
+  if(cache.has(it)) return cache.get(it);
+  let px;
+  if(it.gen) px=it.gen();
+  else{
+    const h=it.h, spp=h.spp||1, bytes=(h.bits||16)/8, n=h.rows*h.cols*spp, start=h.pixelOffset+it.frame*n*bytes;
+    const buf=await it.src.read(start,start+n*bytes);
+    if(spp===1){
+      const dv=new DataView(buf), out=new Float32Array(h.rows*h.cols);
+      const slope=parseFloat(h.slope)||1, icpt=parseFloat(h.intercept)||0, signed=h.signed===1, le=h.le;
+      if(bytes===2){for(let i=0;i<out.length;i++)out[i]=(signed?dv.getInt16(i*2,le):dv.getUint16(i*2,le))*slope+icpt}
+      else{for(let i=0;i<out.length;i++)out[i]=(signed?dv.getInt8(i):dv.getUint8(i))*slope+icpt}
+      px={gray:out};
+    }else px={rgb:new Uint8Array(buf)};
+  }
+  if(px.gray&&px.min==null){let mn=Infinity,mx=-Infinity;for(let i=0;i<px.gray.length;i+=7){const v=px.gray[i];if(v<mn)mn=v;if(v>mx)mx=v}px.min=mn;px.max=mx}
+  const size=(px.gray||px.rgb).byteLength;
+  cache.set(it,px); cacheBytes+=size;
+  for(const [k,v] of cache){if(cacheBytes<=CACHE_BYTES)break;cache.delete(k);cacheBytes-=(v.gray||v.rgb).byteLength}
+  return px;
+}
+
+// ---------- Viewer ----------
+const cv=$("cv"), ctx=cv.getContext("2d"), stage=$("stage"), slider=$("slider");
+const touch=matchMedia("(hover:none)").matches;
+let current=null, idx=0, wc=40, ww=400, invert=false, zoom=0, panX=0, panY=0, tool=touch?"scroll":"wl", token=0, img=null;
+
+function defaultWL(it,px){
+  const c=parseFloat((it.h.wc||"").split("\\")[0]), w=parseFloat((it.h.ww||"").split("\\")[0]);
+  if(isFinite(c)&&isFinite(w)&&w>1) return [c,w];
+  return [(px.min+px.max)/2,Math.max(1,px.max-px.min)];
+}
+async function openSeries(s){
+  current=s; idx=Math.floor(s.items.length/2); invert=false; $("inv").classList.remove("on");
+  slider.max=s.items.length-1; slider.disabled=s.items.length<2;
+  const it=s.items[idx];
+  try{ [wc,ww]=defaultWL(it,await getPixels(it)); }catch{ statusEl.textContent="تعذّرت قراءة هذه المجموعة."; return; }
+  zoom=0; panX=panY=0; await show();
+}
+async function show(){
+  if(!current) return;
+  const my=++token, it=current.items[idx];
+  let px;
+  try{ px=await getPixels(it); }catch(err){ if(my===token) statusEl.textContent="تعذّرت قراءة هذه الصورة."; return; }
+  if(my!==token) return;
+  const h=it.h, W=h.cols, H=h.rows;
+  if(!img||img.width!==W||img.height!==H) img=new ImageData(W,H);
+  const d=img.data, mono1=(h.photo||"").startsWith("MONOCHROME1")!==invert;
+  if(px.gray){
+    const lo=wc-ww/2, k=255/ww, g=px.gray;
+    for(let i=0,j=0;i<g.length;i++,j+=4){let v=(g[i]-lo)*k;v=v<0?0:v>255?255:v;if(mono1)v=255-v;d[j]=d[j+1]=d[j+2]=v;d[j+3]=255}
+  }else{
+    const r=px.rgb, planar=h.planar===1, n=W*H, ybr=(h.photo||"").startsWith("YBR");
+    for(let i=0,j=0;i<n;i++,j+=4){
+      let a,b,c; if(planar){a=r[i];b=r[i+n];c=r[i+2*n]}else{a=r[i*3];b=r[i*3+1];c=r[i*3+2]}
+      if(ybr){const y=a,cb=b-128,cr=c-128;a=y+1.402*cr;b=y-0.344136*cb-0.714136*cr;c=y+1.772*cb}
+      if(invert){a=255-a;b=255-b;c=255-c}
+      d[j]=a;d[j+1]=b;d[j+2]=c;d[j+3]=255;
+    }
+  }
+  if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
+  ctx.putImageData(img,0,0); place();
+  slider.value=idx;
+  $("pos").textContent=`${idx+1} / ${current.items.length}`;
+  $("ovTL").textContent=`${current.modality} · ${current.desc}`;
+  $("ovBL").textContent=px.gray?`W ${Math.round(ww)}  L ${Math.round(wc)}`:"";
+}
+// zoom 0 = fit to the stage; recomputed on every layout so an unsized stage can't stick at 0%
+function effZoom(){return zoom>0?zoom:Math.max(0.01,Math.min(stage.clientWidth/cv.width,stage.clientHeight/cv.height)*0.98)}
+function place(){
+  if(!current) return;
+  const z=effZoom(), w=cv.width*z, h=cv.height*z;
+  cv.style.width=w+"px"; cv.style.height=h+"px";
+  cv.style.left=(stage.clientWidth-w)/2+panX+"px"; cv.style.top=(stage.clientHeight-h)/2+panY+"px";
+  $("ovTR").textContent=`${cv.width}×${cv.height}  ${Math.round(z*100)}%`;
+}
+function fit(){zoom=0;panX=panY=0;place()}
+function go(n){ if(!current) return; const v=Math.max(0,Math.min(current.items.length-1,n)); if(v!==idx){idx=v;show()} }
+function setTool(t){tool=t;document.querySelectorAll("[data-tool]").forEach(x=>x.classList.toggle("on",x.dataset.tool===t))}
+
+// wheel: slices; ctrl/pinch on trackpad: zoom
+let acc=0;
+stage.addEventListener("wheel",e=>{
+  e.preventDefault(); if(!current) return;
+  if(e.ctrlKey){zoom=effZoom()*Math.exp(-e.deltaY*0.01);place();return}
+  acc+=e.deltaY; const step=Math.abs(e.deltaY)>=50?Math.sign(acc):Math.trunc(acc/25);
+  if(step){acc=0;go(idx+step)}
+},{passive:false});
+
+// pointers: one finger/mouse uses the active tool, two fingers pinch-zoom and pan
+const pts=new Map(); let drag=null, pinch=null, lastTap=0;
+stage.addEventListener("pointerdown",e=>{
+  if(!current) return; try{stage.setPointerCapture(e.pointerId)}catch{} pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===2){
+    const [a,b]=[...pts.values()]; drag=null;
+    pinch={d:Math.hypot(a.x-b.x,a.y-b.y),z:effZoom(),mx:(a.x+b.x)/2,my:(a.y+b.y)/2,px:panX,py:panY};
+  }else if(pts.size===1){
+    const now=Date.now(); if(e.pointerType==="touch"&&now-lastTap<300){fit();lastTap=0;return} lastTap=now;
+    drag={x:e.clientX,y:e.clientY,wc,ww,px:panX,py:panY,idx,t:e.button===2||e.shiftKey?"pan":tool};
+  }
+});
+stage.addEventListener("pointermove",e=>{
+  if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&pts.size>=2){
+    const [a,b]=[...pts.values()];
+    zoom=Math.max(0.05,pinch.z*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d);
+    panX=pinch.px+(a.x+b.x)/2-pinch.mx; panY=pinch.py+(a.y+b.y)/2-pinch.my; place(); return;
+  }
+  if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  if(drag.t==="pan"){panX=drag.px+dx;panY=drag.py+dy;place()}
+  else if(drag.t==="scroll"){const step=Math.max(4,stage.clientHeight/Math.max(30,current.items.length));go(drag.idx+Math.round(dy/step))}
+  else{ww=Math.max(1,drag.ww+dx*Math.max(1,drag.ww/200));wc=drag.wc+dy*Math.max(0.5,drag.ww/400);show()}
+});
+const lift=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!pts.size)drag=null};
+stage.addEventListener("pointerup",lift); stage.addEventListener("pointercancel",lift);
+stage.addEventListener("contextmenu",e=>e.preventDefault());
+window.addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT"&&e.target.type!=="range") return;
+  if(e.key==="ArrowUp"||e.key==="ArrowLeft"){e.preventDefault();go(idx-1)}
+  else if(e.key==="ArrowDown"||e.key==="ArrowRight"){e.preventDefault();go(idx+1)}
+  else if(e.key==="PageUp")go(idx-10); else if(e.key==="PageDown")go(idx+10);
+  else if(e.key==="Home")go(0); else if(e.key==="End")go(1e9);
+});
+slider.addEventListener("input",()=>go(+slider.value));
+window.addEventListener("resize",place);
+
+document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+document.querySelectorAll("[data-preset]").forEach(b=>b.onclick=()=>{[wc,ww]=b.dataset.preset.split(",").map(Number);show()});
+$("reset").onclick=async()=>{if(!current)return;const it=current.items[idx];[wc,ww]=defaultWL(it,await getPixels(it));show()};
+$("inv").onclick=e=>{invert=!invert;e.currentTarget.classList.toggle("on",invert);show()};
+$("zin").onclick=()=>{zoom=effZoom()*1.25;place()};
+$("zout").onclick=()=>{zoom=effZoom()/1.25;place()};
+$("fit").onclick=fit;
+$("anyInput").onchange=e=>{loadFiles(e.target.files);e.target.value=""};
+$("dirInput").onchange=e=>{loadFiles(e.target.files);e.target.value=""};
+
+// drag & drop of files, zips and folders
+const drop=$("drop");
+document.addEventListener("dragover",e=>{e.preventDefault();drop.hidden=false});
+document.addEventListener("dragleave",e=>{if(!e.relatedTarget)drop.hidden=true});
+document.addEventListener("drop",async e=>{
+  e.preventDefault(); drop.hidden=true;
+  const out=[], walk=async entry=>{
+    if(entry.isFile){out.push(await new Promise((res,rej)=>entry.file(res,rej)));return}
+    const reader=entry.createReader(); let batch;
+    do{batch=await new Promise((res,rej)=>reader.readEntries(res,rej));for(const c of batch)await walk(c)}while(batch.length);
+  };
+  const entries=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean);
+  if(entries.length){for(const en of entries)await walk(en);loadFiles(out)} else loadFiles(e.dataTransfer.files);
+});
+
+// ---------- Built-in sample: a synthetic head phantom (Shepp-Logan ellipsoids, in HU) ----------
+function sampleSeries(){
+  const N=256, SL=48, E=[ // [cx,cy,cz, rx,ry,rz, HU added]
+    [0,0,0,.69,.92,.9,2000],[0,-.0184,0,.6624,.874,.88,-960],[.22,0,-.25,.11,.31,.22,-30],[-.22,0,-.25,.16,.41,.28,-30],
+    [0,.35,-.25,.21,.25,.41,20],[0,.1,-.25,.046,.046,.05,20],[-.08,-.605,-.25,.046,.023,.05,25],[.06,-.605,-.25,.023,.046,.05,25],[.2,.3,.2,.06,.06,.08,45]];
+  const items=[];
+  for(let s=0;s<SL;s++){
+    const z=-.8+1.6*s/(SL-1);
+    items.push({name:"phantom",inst:s,frame:0,h:{rows:N,cols:N,photo:"MONOCHROME2",wc:"40",ww:"120"},gen(){
+      const g=new Float32Array(N*N).fill(-1000);
+      for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+        const X=(x-N/2)/(N/2), Y=(N/2-y)/(N/2); let v=-1000;
+        for(const [cx,cy,cz,rx,ry,rz,a] of E){const q=((X-cx)/rx)**2+((Y-cy)/ry)**2+((z-cz)/rz)**2;if(q<=1)v+=a}
+        g[y*N+x]=v+((x*7919+y*104729+s*31)%17-8)*0.6;
+      }
+      return {gray:g};
+    }});
+  }
+  return {num:1,desc:"Head phantom",modality:"CT",items};
+}
+setTool(tool);
+(()=>{const s=sampleSeries();studies.set("sample",{date:"",desc:"مثال",series:new Map([["s",s]])});
+  $("list").innerHTML='<div class="study"><h3>مثال تجريبي</h3><button class="series on"><span>Head phantom</span><small>48</small></button></div>';
+  openSeries(s).then(()=>go(30)); statusEl.textContent="";})();
+</script>
+
+</body>
+</html>
